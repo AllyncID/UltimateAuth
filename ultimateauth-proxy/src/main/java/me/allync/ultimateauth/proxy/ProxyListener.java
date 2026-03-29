@@ -13,6 +13,7 @@ import net.md_5.bungee.api.event.ServerKickEvent;
 import net.md_5.bungee.api.event.ServerSwitchEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
+import net.md_5.bungee.event.EventPriority;
 
 import java.util.Locale;
 import java.util.Map;
@@ -28,7 +29,7 @@ public final class ProxyListener implements Listener {
         this.authService = authService;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPreLogin(PreLoginEvent event) {
         if (config.network().acceptedHostnames().isEmpty()) {
             authService.handlePreLogin(event);
@@ -48,7 +49,7 @@ public final class ProxyListener implements Listener {
         authService.handlePreLogin(event);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onHandshake(PlayerHandshakeEvent event) {
         authService.handleHandshake(event.getConnection());
     }

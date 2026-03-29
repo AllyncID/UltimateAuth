@@ -80,7 +80,8 @@ final class PluginConfig {
         Premium premium = new Premium(
                 premiumSection.getBoolean("autoDetectNames"),
                 premiumSection.getBoolean("registerPremiumUsers"),
-                premiumSection.getBoolean("protectUnregisteredNames")
+                premiumSection.getBoolean("protectUnregisteredNames"),
+                PremiumUuidMode.from(premiumSection.getString("existingPremiumUuidMode"), PremiumUuidMode.LEGACY)
         );
 
         Bedrock bedrock = new Bedrock(
@@ -196,7 +197,10 @@ final class PluginConfig {
                    boolean redirectOnKick) {
     }
 
-    record Premium(boolean autoDetectNames, boolean registerPremiumUsers, boolean protectUnregisteredNames) {
+    record Premium(boolean autoDetectNames,
+                   boolean registerPremiumUsers,
+                   boolean protectUnregisteredNames,
+                   PremiumUuidMode existingPremiumUuidMode) {
     }
 
     record Bedrock(boolean enabled, List<String> autoLoginPrefixes) {

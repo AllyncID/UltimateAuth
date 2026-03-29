@@ -9,6 +9,7 @@ import java.io.IOException;
 final class FreezeBridge {
     private final UltimateAuthPlugin plugin;
     private final PluginConfig config;
+    private AuthService authService;
 
     FreezeBridge(UltimateAuthPlugin plugin, PluginConfig config) {
         this.plugin = plugin;
@@ -27,6 +28,10 @@ final class FreezeBridge {
         }
     }
 
+    void setAuthService(AuthService authService) {
+        this.authService = authService;
+    }
+
     void pushState(ProxiedPlayer player, boolean frozen) {
         if (!config.backendBridge().enabled() || player.getServer() == null) {
             return;
@@ -36,12 +41,20 @@ final class FreezeBridge {
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             try (DataOutputStream output = new DataOutputStream(byteArrayOutputStream)) {
                 output.writeUTF(config.network().accessToken());
-                output.writeUTF(player.getUniqueId().toString());
+                output.writeUTF(resolveBackendUniqueId(player).toString());
                 output.writeBoolean(frozen);
             }
             player.getServer().getInfo().sendData(config.backendBridge().pluginChannel(), byteArrayOutputStream.toByteArray());
         } catch (IOException exception) {
             plugin.getLogger().warning("Unable to push auth state for " + player.getName() + ": " + exception.getMessage());
         }
+    }
+
+    private java.util.UUID resolveBackendUniqueId(ProxiedPlayer player) {
+        if (authService == null) {
+            return player.getUniqueId();
+        }
+        java.util.UUID backendUniqueId = authService.resolveBackendUniqueId(player);
+        return backendUniqueId != null ? backendUniqueId : player.getUniqueId();
     }
 }

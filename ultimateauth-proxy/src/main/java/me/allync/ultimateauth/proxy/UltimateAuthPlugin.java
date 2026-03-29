@@ -45,6 +45,7 @@ public final class UltimateAuthPlugin extends Plugin {
             freezeBridge.registerChannel();
 
             authService = new AuthService(this, pluginConfig, messages, databaseManager, passwordService, mojangService, freezeBridge);
+            freezeBridge.setAuthService(authService);
 
             getProxy().getPluginManager().registerListener(this, new ProxyListener(pluginConfig, messages, authService));
             registerCommands();

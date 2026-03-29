@@ -9,6 +9,8 @@ import net.md_5.bungee.api.event.PreLoginEvent;
 import net.md_5.bungee.api.event.PostLoginEvent;
 import net.md_5.bungee.api.event.ServerConnectEvent;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.security.SecureRandom;
@@ -35,6 +37,8 @@ final class AuthService {
     private final ConcurrentHashMap<String, PreparedLogin> pendingPreparations = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, FailedLoginWindow> failedLoginWindows = new ConcurrentHashMap<>();
     private final SecureRandom secureRandom = new SecureRandom();
+    private final FloodgateDetector floodgateDetector = new FloodgateDetector();
+    private final ConnectionIdentityAccessor connectionIdentityAccessor = new ConnectionIdentityAccessor();
 
     AuthService(UltimateAuthPlugin plugin,
                 PluginConfig config,
@@ -61,7 +65,14 @@ final class AuthService {
         event.registerIntent(plugin);
         plugin.getDatabaseExecutor().execute(() -> {
             try {
-                PreparedLogin preparedLogin = prepareLogin(username, connection.getUniqueId(), extractIp(connection.getSocketAddress()), connection.isOnlineMode());
+                PreparedLogin preparedLogin = prepareLogin(
+                        username,
+                        connection.getUniqueId(),
+                        extractIp(connection.getSocketAddress()),
+                        connection.isOnlineMode(),
+                        isBedrockPlayer(connection)
+                );
+                applyConnectionIdentity(connection, preparedLogin.account());
                 pendingPreparations.put(usernameLower, preparedLogin);
             } catch (PremiumAuthenticationRequiredException exception) {
                 event.setCancelled(true);
@@ -86,25 +97,18 @@ final class AuthService {
             return;
         }
 
-        event.registerIntent(plugin);
-        plugin.getDatabaseExecutor().execute(() -> {
-            try {
-                Optional<AccountRecord> loaded = database.loadAccount(playerName);
-                if (loaded.isPresent()) {
-                    AccountRecord account = loaded.get();
-                    if (account.getAccountType() == AccountType.PREMIUM) {
-                        connection.setOnlineMode(true);
-                    }
-                    if (account.getPlayerUuid() != null) {
-                        connection.setUniqueId(account.getPlayerUuid());
-                    }
+        try {
+            Optional<AccountRecord> loaded = database.loadCachedAccount(playerName);
+            if (loaded.isPresent()) {
+                AccountRecord account = loaded.get();
+                if (account.getAccountType() == AccountType.PREMIUM) {
+                    connection.setOnlineMode(true);
                 }
-            } catch (Exception exception) {
-                plugin.getLogger().warning("Unable to prepare pre-login UUID for " + playerName + ": " + exception.getMessage());
-            } finally {
-                event.completeIntent(plugin);
+                applyConnectionIdentity(connection, account);
             }
-        });
+        } catch (Exception exception) {
+            plugin.getLogger().warning("Unable to prepare pre-login UUID for " + playerName + ": " + exception.getMessage());
+        }
     }
 
     void handleHandshake(PendingConnection connection) {
@@ -114,13 +118,17 @@ final class AuthService {
         }
 
         try {
-            Optional<AccountRecord> loaded = database.loadAccount(playerName);
-            if (loaded.isPresent() && loaded.get().getAccountType() == AccountType.PREMIUM) {
-                connection.setOnlineMode(true);
+            Optional<AccountRecord> loaded = database.loadCachedAccount(playerName);
+            if (loaded.isPresent()) {
+                AccountRecord account = loaded.get();
+                applyConnectionIdentity(connection, account);
+                if (account.getAccountType() == AccountType.PREMIUM) {
+                    connection.setOnlineMode(true);
+                }
                 return;
             }
-            if (loaded.isPresent() || !config.premium().autoDetectNames()
-                    || !config.premium().protectUnregisteredNames() || isBedrockPlayer(playerName)) {
+            if (!config.premium().autoDetectNames()
+                    || !config.premium().protectUnregisteredNames() || isBedrockPlayer(connection)) {
                 return;
             }
 
@@ -540,9 +548,12 @@ final class AuthService {
         return resolveServer(config.network().mainServers());
     }
 
-    private PreparedLogin prepareLogin(String playerName, UUID playerUuid, String ipAddress, boolean onlineMode) {
+    private PreparedLogin prepareLogin(String playerName,
+                                       UUID playerUuid,
+                                       String ipAddress,
+                                       boolean onlineMode,
+                                       boolean bedrockPlayer) {
         long now = System.currentTimeMillis();
-        boolean bedrockPlayer = isBedrockPlayer(playerName);
         Optional<AccountRecord> loaded = database.loadAccount(playerName);
         AccountRecord account = loaded.orElse(null);
 
@@ -1164,6 +1175,41 @@ final class AuthService {
         return TimeUnit.SECONDS.toMillis(Math.max(30, config.authorization().maximumAuthorisationTimeSeconds()));
     }
 
+    private UUID resolveProxyUniqueId(AccountRecord account) {
+        if (account.getAccountType() == AccountType.PREMIUM) {
+            if (config.premium().existingPremiumUuidMode() == PremiumUuidMode.REAL && account.getPremiumUuid() != null) {
+                return account.getPremiumUuid();
+            }
+            if (account.getPlayerUuid() != null) {
+                return account.getPlayerUuid();
+            }
+            return account.getPremiumUuid();
+        }
+        return account.getPlayerUuid();
+    }
+
+    UUID resolveBackendUniqueId(ProxiedPlayer player) {
+        AuthSession session = sessions.get(player.getUniqueId());
+        if (session != null && session.getAccount() != null) {
+            return resolveBackendUniqueId(session.getAccount());
+        }
+        return connectionIdentityAccessor.readRewriteId(player);
+    }
+
+    private UUID resolveBackendUniqueId(AccountRecord account) {
+        return resolveProxyUniqueId(account);
+    }
+
+    private void applyConnectionIdentity(PendingConnection connection, AccountRecord account) {
+        if (connection == null || account == null) {
+            return;
+        }
+
+        UUID proxyUniqueId = resolveProxyUniqueId(account);
+        UUID backendUniqueId = resolveBackendUniqueId(account);
+        connectionIdentityAccessor.apply(connection, proxyUniqueId, backendUniqueId);
+    }
+
     private String formatDuration(long totalSeconds) {
         long seconds = Math.max(0L, totalSeconds);
         long hours = seconds / 3600L;
@@ -1179,8 +1225,29 @@ final class AuthService {
         return remainingSeconds + "s";
     }
 
+    private boolean isBedrockPlayer(PendingConnection connection) {
+        if (connection == null) {
+            return false;
+        }
+        return isBedrockPlayer(connection.getUniqueId(), connection.getName());
+    }
+
     private boolean isBedrockPlayer(String playerName) {
+        return isBedrockPlayer(null, playerName);
+    }
+
+    private boolean isBedrockPlayer(UUID playerUuid, String playerName) {
         if (!config.bedrock().enabled()) {
+            return false;
+        }
+        if (isBedrockUsername(playerName)) {
+            return true;
+        }
+        return floodgateDetector.isFloodgatePlayer(playerUuid);
+    }
+
+    private boolean isBedrockUsername(String playerName) {
+        if (playerName == null || playerName.isBlank()) {
             return false;
         }
         String normalized = playerName.toLowerCase();
@@ -1193,6 +1260,158 @@ final class AuthService {
     }
 
     private record FailedLoginWindow(int attempts, long expiresAt) {
+    }
+
+    private final class FloodgateDetector {
+        private volatile boolean initialized;
+        private volatile Method getInstanceMethod;
+        private volatile Method isFloodgatePlayerMethod;
+        private volatile boolean warningLogged;
+
+        boolean isFloodgatePlayer(UUID playerUuid) {
+            if (playerUuid == null) {
+                return false;
+            }
+
+            ensureInitialized();
+            if (getInstanceMethod == null || isFloodgatePlayerMethod == null) {
+                return false;
+            }
+
+            try {
+                Object api = getInstanceMethod.invoke(null);
+                return Boolean.TRUE.equals(isFloodgatePlayerMethod.invoke(api, playerUuid));
+            } catch (ReflectiveOperationException exception) {
+                if (!warningLogged) {
+                    warningLogged = true;
+                    plugin.getLogger().warning("Floodgate API lookup failed, Bedrock auto-detection will fall back to prefixes only: "
+                            + exception.getMessage());
+                }
+                return false;
+            }
+        }
+
+        private synchronized void ensureInitialized() {
+            if (initialized) {
+                return;
+            }
+            initialized = true;
+
+            try {
+                Class<?> apiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi");
+                getInstanceMethod = apiClass.getMethod("getInstance");
+                isFloodgatePlayerMethod = apiClass.getMethod("isFloodgatePlayer", UUID.class);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+                getInstanceMethod = null;
+                isFloodgatePlayerMethod = null;
+            }
+        }
+    }
+
+    private final class ConnectionIdentityAccessor {
+        private volatile boolean pendingInitialized;
+        private volatile boolean playerInitialized;
+        private volatile Field pendingUniqueIdField;
+        private volatile Field pendingRewriteIdField;
+        private volatile Method playerRewriteIdMethod;
+        private volatile boolean warningLogged;
+
+        void apply(PendingConnection connection, UUID uniqueId, UUID rewriteId) {
+            if (connection == null || (uniqueId == null && rewriteId == null)) {
+                return;
+            }
+
+            ensurePendingInitialized(connection.getClass());
+            if (!connection.isOnlineMode() && uniqueId != null) {
+                try {
+                    connection.setUniqueId(uniqueId);
+                } catch (IllegalStateException ignored) {
+                    // Fall through to reflective write when Travertine rejects API-based updates.
+                }
+            }
+
+            try {
+                if (pendingUniqueIdField != null && uniqueId != null) {
+                    pendingUniqueIdField.set(connection, uniqueId);
+                }
+                if (pendingRewriteIdField != null && rewriteId != null) {
+                    pendingRewriteIdField.set(connection, rewriteId);
+                }
+            } catch (IllegalAccessException exception) {
+                logWarningOnce("Unable to apply connection UUID identity", exception);
+            }
+        }
+
+        UUID readRewriteId(ProxiedPlayer player) {
+            if (player == null) {
+                return null;
+            }
+
+            ensurePlayerInitialized(player.getClass());
+            if (playerRewriteIdMethod == null) {
+                return player.getUniqueId();
+            }
+
+            try {
+                Object value = playerRewriteIdMethod.invoke(player);
+                return value instanceof UUID uuid ? uuid : player.getUniqueId();
+            } catch (ReflectiveOperationException exception) {
+                logWarningOnce("Unable to read backend rewrite UUID", exception);
+                return player.getUniqueId();
+            }
+        }
+
+        private synchronized void ensurePendingInitialized(Class<?> pendingConnectionClass) {
+            if (pendingInitialized) {
+                return;
+            }
+            pendingInitialized = true;
+            pendingUniqueIdField = findField(pendingConnectionClass, "uniqueId");
+            pendingRewriteIdField = findField(pendingConnectionClass, "rewriteId");
+        }
+
+        private synchronized void ensurePlayerInitialized(Class<?> playerClass) {
+            if (playerInitialized) {
+                return;
+            }
+            playerInitialized = true;
+            playerRewriteIdMethod = findMethod(playerClass, "getRewriteId");
+        }
+
+        private Field findField(Class<?> type, String name) {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    Field field = current.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field;
+                } catch (NoSuchFieldException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        private Method findMethod(Class<?> type, String name) {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    Method method = current.getDeclaredMethod(name);
+                    method.setAccessible(true);
+                    return method;
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        private void logWarningOnce(String message, ReflectiveOperationException exception) {
+            if (!warningLogged) {
+                warningLogged = true;
+                plugin.getLogger().warning(message + ": " + exception.getMessage());
+            }
+        }
     }
 
     private static final class PremiumAuthenticationRequiredException extends RuntimeException {

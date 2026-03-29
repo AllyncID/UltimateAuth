@@ -10,6 +10,23 @@ enum AccountType {
     BEDROCK
 }
 
+enum PremiumUuidMode {
+    LEGACY,
+    REAL;
+
+    static PremiumUuidMode from(String value, PremiumUuidMode fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        for (PremiumUuidMode mode : values()) {
+            if (mode.name().equalsIgnoreCase(value.trim())) {
+                return mode;
+            }
+        }
+        return fallback;
+    }
+}
+
 enum HashAlgorithm {
     SHA256("SHA-256"),
     SHA512("SHA-512"),
@@ -67,6 +84,24 @@ final class AccountRecord {
         this.lastName = lastName;
         this.accountType = AccountType.CRACKED;
         this.passwordAlgorithm = HashAlgorithm.SHA256;
+    }
+
+    AccountRecord copy() {
+        AccountRecord copy = new AccountRecord(usernameLower, lastName);
+        copy.playerUuid = playerUuid;
+        copy.premiumUuid = premiumUuid;
+        copy.accountType = accountType;
+        copy.passwordHash = passwordHash;
+        copy.passwordAlgorithm = passwordAlgorithm;
+        copy.lastIp = lastIp;
+        copy.lastServer = lastServer;
+        copy.lastLoginAt = lastLoginAt;
+        copy.registeredAt = registeredAt;
+        copy.updatedAt = updatedAt;
+        copy.sessionIp = sessionIp;
+        copy.sessionExpiresAt = sessionExpiresAt;
+        copy.migratedFromJPremium = migratedFromJPremium;
+        return copy;
     }
 
     String getUsernameLower() {

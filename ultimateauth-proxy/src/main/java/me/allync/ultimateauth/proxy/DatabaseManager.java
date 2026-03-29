@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class DatabaseManager implements AutoCloseable {
     private static final String UPSERT_ACCOUNT = """
@@ -43,6 +44,7 @@ final class DatabaseManager implements AutoCloseable {
     private final UltimateAuthPlugin plugin;
     private final PluginConfig config;
     private final PasswordService passwordService;
+    private final ConcurrentHashMap<String, AccountRecord> accountCache = new ConcurrentHashMap<>();
     private HikariDataSource dataSource;
 
     DatabaseManager(UltimateAuthPlugin plugin, PluginConfig config, PasswordService passwordService) {
@@ -79,16 +81,24 @@ final class DatabaseManager implements AutoCloseable {
         createTables();
         new JPremiumFileImporter(plugin, this, config).importIfNeeded();
         migrateJPremiumIfNeeded();
+        preloadAccountCache();
     }
 
     Optional<AccountRecord> loadAccount(String playerName) {
         String usernameLower = normalizeName(playerName);
+        AccountRecord cached = accountCache.get(usernameLower);
+        if (cached != null) {
+            return Optional.of(cached.copy());
+        }
+
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("SELECT * FROM ua_accounts WHERE username_lower = ?")) {
             statement.setString(1, usernameLower);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (resultSet.next()) {
-                    return Optional.of(mapAccount(resultSet));
+                    AccountRecord account = mapAccount(resultSet);
+                    accountCache.put(usernameLower, account.copy());
+                    return Optional.of(account);
                 }
             }
         } catch (SQLException exception) {
@@ -97,11 +107,17 @@ final class DatabaseManager implements AutoCloseable {
         return Optional.empty();
     }
 
+    Optional<AccountRecord> loadCachedAccount(String playerName) {
+        AccountRecord cached = accountCache.get(normalizeName(playerName));
+        return cached == null ? Optional.empty() : Optional.of(cached.copy());
+    }
+
     void saveAccount(AccountRecord account) {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(UPSERT_ACCOUNT)) {
             bindAccount(statement, account);
             statement.executeUpdate();
+            accountCache.put(account.getUsernameLower(), account.copy());
         } catch (SQLException exception) {
             throw new IllegalStateException("Unable to save UltimateAuth account for " + account.getLastName(), exception);
         }
@@ -171,6 +187,18 @@ final class DatabaseManager implements AutoCloseable {
                         meta_value VARCHAR(255) NOT NULL
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     """);
+        }
+    }
+
+    private void preloadAccountCache() throws SQLException {
+        accountCache.clear();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("SELECT * FROM ua_accounts");
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                AccountRecord account = mapAccount(resultSet);
+                accountCache.put(account.getUsernameLower(), account.copy());
+            }
         }
     }
 

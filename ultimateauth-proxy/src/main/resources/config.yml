@@ -26,6 +26,7 @@ premium:
   autoDetectNames: true
   registerPremiumUsers: false
   protectUnregisteredNames: false
+  existingPremiumUuidMode: "LEGACY" # LEGACY keeps imported/fixed UUIDs for existing premium accounts. REAL uses premium_uuid on the proxy.
 
 bedrock:
   enabled: true
