@@ -1,0 +1,74 @@
+storage:
+  host: "127.0.0.1"
+  port: 3306
+  database: "ultimateauth"
+  user: "root"
+  password: "change-me"
+  properties:
+    - "allowPublicKeyRetrieval=true"
+  pool:
+    maximumSize: 10
+    minimumIdle: 10
+    connectionTimeoutMillis: 5000
+    maxLifetimeMillis: 2800000
+
+network:
+  accessToken: "change-this-random-token"
+  acceptedHostnames: []
+  limboServers:
+    - "lobby"
+  mainServers:
+    - "lobby"
+  rememberLastServer: false
+  redirectOnKick: true
+
+premium:
+  autoDetectNames: true
+  registerPremiumUsers: false
+  protectUnregisteredNames: false
+
+bedrock:
+  enabled: true
+  autoLoginPrefixes:
+    - "."
+
+authorization:
+  defaultHashingAlgorithm: "BCRYPT"
+  safePasswordPattern: "[\\S]{6,25}"
+  maximumLoginTriesBeforeDisconnection: 3
+  maximumAuthorisationTimeSeconds: 180
+  automaticSessionTimeMinutes: 10
+  logoutUserCommands:
+    - "login"
+    - "register"
+    - "l"
+  loginAliases:
+    - "l"
+
+visuals:
+  delayTitlesAfterJoinMillis: 1500
+  reminderIntervalSeconds: 5
+
+backendBridge:
+  enabled: true
+  pluginChannel: "ultimateauth:state"
+
+migration:
+  jpremium:
+    enabled: false
+    runOnce: true
+    sourceTable: "user_profiles"
+    defaultPasswordAlgorithm: "SHA256"
+    fileImport:
+      enabled: false
+      runOnce: true
+      directory: "imports"
+      fileName: ""
+    columns:
+      username: "lastNickname"
+      uniqueId: "uniqueId"
+      premiumUniqueId: "premiumId"
+      passwordHash: "hashedPassword"
+      premium: "premiumId"
+      lastIp: "lastAddress"
+      lastSeen: "lastSeen"

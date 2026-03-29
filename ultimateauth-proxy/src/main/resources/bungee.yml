@@ -1,0 +1,5 @@
+name: UltimateAuth
+version: 1.0.0-SNAPSHOT
+main: me.allync.ultimateauth.proxy.UltimateAuthPlugin
+author: Allync
+description: Modern BungeeCord authentication with MySQL, sessions, and JPremium migration support.

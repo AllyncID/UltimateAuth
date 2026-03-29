@@ -1,0 +1,210 @@
+prefix: "&6&lMine&f&lAuthorization &8» &r"
+
+errors:
+  player_only: "%prefix%&cOnly players can use this command."
+  no_permission: "%prefix%&cYou do not have permission to use this command."
+  internal: "%prefix%&cAn internal error occurred. &7Check the proxy console."
+  account_load_failed: "%prefix%&cYour account could not be loaded right now. &7Please reconnect in a moment."
+  hostname_blocked: "&cThis hostname is not allowed on this proxy."
+  limbo_missing: "%prefix%&cNo limbo server is configured or online."
+  main_missing: "%prefix%&cNo main server is configured or online."
+  password_invalid: "%prefix%&cInvalid password. &7Required pattern: &f%pattern%"
+  password_wrong: "%prefix%&cWrong password. &7Remaining tries: &f%tries%"
+  already_authorized: "%prefix%&aYou are already authenticated."
+  not_registered: "%prefix%&cYou are not registered yet. &7Use &6/register <password>&7."
+  already_registered: "%prefix%&cYour account is already registered."
+  login_required: "%prefix%&cYou must login first. &7Use &6/login <password>&7."
+  register_required: "%prefix%&cYou must register first. &7Use &6/register <password>&7."
+  account_mode_change_requires_auth: "%prefix%&cYou must login or register before changing your account mode."
+  premium_name_required: "%prefix%&cThis nickname is not a premium Minecraft account. &7You cannot use &6/premium&7."
+  premium_name_protected: "%prefix%&cThis nickname is protected as a premium account. &7Reconnect using a premium Minecraft account."
+  premium_verification_unavailable: "%prefix%&cPremium verification is temporarily unavailable. &7Please reconnect in a moment."
+  player_not_found: "%prefix%&cThat player does not have an UltimateAuth account."
+  command_blocked: "%prefix%&cYou must authenticate before using this command."
+  chat_blocked: "%prefix%&cChat is disabled until you login or register."
+  change_password_old_wrong: "%prefix%&cYour current password is incorrect."
+  login_locked: "%prefix%&cToo many wrong passwords. &7Wait &f%time% &7before trying again."
+
+auth:
+  loading: "%prefix%&7Loading your authentication profile..."
+  auto_login_session: "%prefix%&aSession restored. &7Welcome back, &f%player%&7."
+  auto_login_premium: "%prefix%&aPremium account detected. &7Welcome, &f%player%&7."
+  auto_login_bedrock: "%prefix%&aBedrock account detected. &7Welcome, &f%player%&7."
+  register_success: "%prefix%&aRegistration completed. &7You are now logged in."
+  login_success: "%prefix%&aLogin successful. &7Have fun."
+  switched_premium: "%prefix%&aYour account is now set to premium."
+  switched_premium_disconnect: "%prefix%&aPremium mode enabled. &7You will be disconnected so UltimateAuth can verify ownership on reconnect."
+  switched_cracked: "%prefix%&aYour account is now set to cracked."
+  already_premium: "%prefix%&7Your account is already set to premium."
+  already_cracked: "%prefix%&7Your account is already set to cracked."
+  switched_cracked_disconnect: "%prefix%&aCracked mode enabled. &7You will be disconnected to rebuild your session."
+  cracked_disconnect_screen: "&6&lMineHive Auth\n&7Your account was switched to cracked mode.\n&7Reconnect to register or login."
+  premium_disconnect_screen: "&6&lMineHive Auth\n&7Your account was switched to premium mode.\n&7Reconnect using a premium Minecraft session."
+  change_password_success: "%prefix%&aYour password has been updated."
+  change_password_disconnect_screen: "&aUltimateAuth\n&7Your password was changed successfully.\n&7Reconnect and login again."
+  cracked_needs_register: "%prefix%&7Your account is cracked now. &7Use &6/register <password> &7to set your password."
+  timeout: "&cAuthentication timed out. &7Please reconnect and try again."
+  reminder_register: "%prefix%&7Register with &6/register <password> &7before the timer ends. &7%time% left."
+  reminder_login: "%prefix%&7Login with &6/login <password> &7before the timer ends. &7%time% left."
+
+admin:
+  forcepremium: "%prefix%&aForced premium mode for &f%player%&a."
+  forcecracked: "%prefix%&aForced cracked mode for &f%player%&a."
+  forceunregister: "%prefix%&aUnregistered &f%player%&a."
+  forceregister: "%prefix%&aRegistered &f%player%&a as cracked. &7Temporary password: &f%password%"
+
+usage:
+  register: "%prefix%&7Usage: &6/register <password>"
+  login: "%prefix%&7Usage: &6/login <password>"
+  change_password: "%prefix%&7Usage: &6/changepassword <oldpassword> <newpassword>"
+  premium: "%prefix%&7Usage: &6/premium"
+  cracked: "%prefix%&7Usage: &6/cracked"
+  forcepremium: "%prefix%&7Usage: &6/forcepremium <player>"
+  forcecracked: "%prefix%&7Usage: &6/forcecracked <player>"
+  forceunregister: "%prefix%&7Usage: &6/forceunregister <player>"
+  forceregister: "%prefix%&7Usage: &6/forceregister <player> [password]"
+
+titles:
+  loading:
+    enabled: true
+    title: "&6&lUltimateAuth"
+    subtitle: "&7Loading your account..."
+    fadeIn: 10
+    stay: 80
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  register:
+    enabled: true
+    title: "&6&lCreate Password"
+    subtitle: "&7Use &6/register <password>"
+    fadeIn: 10
+    stay: 120
+    fadeOut: 10
+    delayMillis: 1500
+    repeat: true
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  login:
+    enabled: true
+    title: "&c&lLogin Required"
+    subtitle: "&7Use &6/login <password>"
+    fadeIn: 10
+    stay: 120
+    fadeOut: 10
+    delayMillis: 1500
+    repeat: true
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  authorized:
+    enabled: true
+    title: "&a&lAuthenticated"
+    subtitle: "&7Access granted"
+    fadeIn: 5
+    stay: 70
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  premium:
+    enabled: true
+    title: "&a&lPremium Account"
+    subtitle: "&7Automatically authenticated"
+    fadeIn: 5
+    stay: 70
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  premium_reconnect:
+    enabled: true
+    title: "&a&lPremium Mode Enabled"
+    subtitle: "&7Reconnect to verify ownership"
+    fadeIn: 5
+    stay: 50
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  bedrock:
+    enabled: true
+    title: "&a&lBedrock Account"
+    subtitle: "&7Automatically authenticated"
+    fadeIn: 5
+    stay: 70
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  premium_warning:
+    enabled: true
+    title: "&c&lPremium Required"
+    subtitle: "&7This nickname has no premium profile"
+    fadeIn: 5
+    stay: 80
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  cracked_disconnect:
+    enabled: true
+    title: "&a&lCracked Mode Enabled"
+    subtitle: "&7Reconnect to continue"
+    fadeIn: 5
+    stay: 40
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  already_premium:
+    enabled: true
+    title: "&c&lAlready Premium"
+    subtitle: "&7Nothing changed"
+    fadeIn: 5
+    stay: 50
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  already_cracked:
+    enabled: true
+    title: "&c&lAlready Cracked"
+    subtitle: "&7Nothing changed"
+    fadeIn: 5
+    stay: 50
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  change_password_disconnect:
+    enabled: true
+    title: "&a&lPassword Changed"
+    subtitle: "&7Reconnect to login again"
+    fadeIn: 5
+    stay: 50
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false
+  timeout:
+    enabled: true
+    title: "&c&lSession Expired"
+    subtitle: "&7Reconnect to try again"
+    fadeIn: 5
+    stay: 80
+    fadeOut: 10
+    delayMillis: 0
+    repeat: false
+    repeatIntervalSeconds: 5
+    resetBeforeSend: false

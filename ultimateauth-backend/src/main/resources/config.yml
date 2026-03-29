@@ -1,0 +1,7 @@
+bridge:
+  accessToken: "change-this-random-token"
+  pluginChannel: "ultimateauth:state"
+
+freeze:
+  blindnessAmplifier: 0
+  skipCreative: true
