@@ -33,6 +33,7 @@ public final class ProxyListener implements Listener {
     public void onPreLogin(PreLoginEvent event) {
         if (config.network().acceptedHostnames().isEmpty()) {
             authService.handlePreLogin(event);
+            authService.cleanupStaleDuplicateConnection(event.getConnection());
             return;
         }
 
@@ -47,15 +48,18 @@ public final class ProxyListener implements Listener {
         }
 
         authService.handlePreLogin(event);
+        authService.cleanupStaleDuplicateConnection(event.getConnection());
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onHandshake(PlayerHandshakeEvent event) {
         authService.handleHandshake(event.getConnection());
+        authService.cleanupStaleDuplicateConnection(event.getConnection());
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onLogin(LoginEvent event) {
+        authService.restoreCachedConnectionIdentity(event.getConnection());
         authService.handleLogin(event);
     }
 

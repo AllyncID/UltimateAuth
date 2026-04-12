@@ -14,13 +14,17 @@ import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.security.SecureRandom;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -35,10 +39,10 @@ final class AuthService {
     private final Pattern safePasswordPattern;
     private final ConcurrentHashMap<UUID, AuthSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PreparedLogin> pendingPreparations = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, FailedLoginWindow> failedLoginWindows = new ConcurrentHashMap<>();
     private final SecureRandom secureRandom = new SecureRandom();
     private final FloodgateDetector floodgateDetector = new FloodgateDetector();
     private final ConnectionIdentityAccessor connectionIdentityAccessor = new ConnectionIdentityAccessor();
+    private final StaleConnectionAccessor staleConnectionAccessor = new StaleConnectionAccessor();
 
     AuthService(UltimateAuthPlugin plugin,
                 PluginConfig config,
@@ -72,7 +76,6 @@ final class AuthService {
                         connection.isOnlineMode(),
                         isBedrockPlayer(connection)
                 );
-                applyConnectionIdentity(connection, preparedLogin.account());
                 pendingPreparations.put(usernameLower, preparedLogin);
             } catch (PremiumAuthenticationRequiredException exception) {
                 event.setCancelled(true);
@@ -108,6 +111,59 @@ final class AuthService {
             }
         } catch (Exception exception) {
             plugin.getLogger().warning("Unable to prepare pre-login UUID for " + playerName + ": " + exception.getMessage());
+        }
+    }
+
+    void restoreCachedConnectionIdentity(PendingConnection connection) {
+        if (connection == null) {
+            return;
+        }
+
+        String playerName = connection.getName();
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+
+        try {
+            Optional<AccountRecord> loaded = database.loadCachedAccount(playerName);
+            loaded.ifPresent(account -> applyConnectionIdentity(connection, account));
+        } catch (Exception exception) {
+            plugin.getLogger().warning("Unable to restore cached login UUID for " + playerName + ": " + exception.getMessage());
+        }
+    }
+
+    void cleanupStaleDuplicateConnection(PendingConnection connection) {
+        if (connection == null) {
+            return;
+        }
+
+        String playerName = connection.getName();
+        if (playerName == null || playerName.isBlank()) {
+            return;
+        }
+
+        Set<ProxiedPlayer> duplicates = new LinkedHashSet<>();
+        ProxiedPlayer byName = findOnlinePlayer(playerName);
+        if (byName != null) {
+            duplicates.add(byName);
+        }
+
+        UUID uniqueId = connection.getUniqueId();
+        if (uniqueId != null) {
+            ProxiedPlayer byUniqueId = plugin.getProxy().getPlayer(uniqueId);
+            if (byUniqueId != null) {
+                duplicates.add(byUniqueId);
+            }
+        }
+
+        UUID offlineId = staleConnectionAccessor.readOfflineId(connection);
+        ProxiedPlayer byOfflineId = staleConnectionAccessor.findByOfflineId(plugin.getProxy(), offlineId);
+        if (byOfflineId != null) {
+            duplicates.add(byOfflineId);
+        }
+
+        for (ProxiedPlayer duplicate : duplicates) {
+            cleanupStaleDuplicateConnection(duplicate, playerName, uniqueId, offlineId);
         }
     }
 
@@ -280,7 +336,6 @@ final class AuthService {
         AccountRecord finalAccount = account;
         plugin.getDatabaseExecutor().execute(() -> {
             database.saveAccount(finalAccount);
-            clearFailedLoginWindow(finalAccount.getUsernameLower());
             if (session.isAuthorized()) {
                 messages.send(player, "auth.register_success");
             } else {
@@ -354,7 +409,6 @@ final class AuthService {
 
         plugin.getDatabaseExecutor().execute(() -> {
             database.saveAccount(account);
-            clearFailedLoginWindow(account.getUsernameLower());
             messages.send(player, "auth.change_password_success");
             messages.sendTitle(player, "change_password_disconnect", Map.of("%player%", player.getName()));
             plugin.getProxy().getScheduler().schedule(plugin, () -> {
@@ -507,7 +561,6 @@ final class AuthService {
             account.setSessionExpiresAt(0L);
             account.setUpdatedAt(System.currentTimeMillis());
             database.saveAccount(account);
-            clearFailedLoginWindow(account.getUsernameLower());
             messages.send(sender, "admin.forceunregister", Map.of("%player%", playerName));
             refreshOnlineState(playerName);
         });
@@ -528,7 +581,6 @@ final class AuthService {
             account.setSessionExpiresAt(0L);
             account.setUpdatedAt(System.currentTimeMillis());
             database.saveAccount(account);
-            clearFailedLoginWindow(account.getUsernameLower());
             messages.send(sender, "admin.forceregister", Map.of("%player%", playerName, "%password%", actualPassword));
             refreshOnlineState(playerName);
         });
@@ -744,7 +796,6 @@ final class AuthService {
         account.setLastLoginAt(System.currentTimeMillis());
         account.setUpdatedAt(System.currentTimeMillis());
         database.saveAccount(account);
-        clearFailedLoginWindow(account.getUsernameLower());
 
         session.setAccount(account);
         session.setStatus(AuthStatus.AUTHORIZED);
@@ -818,7 +869,6 @@ final class AuthService {
             account.setLastName(playerName);
             mutator.accept(account);
             database.saveAccount(account);
-            clearFailedLoginWindow(account.getUsernameLower());
             messages.send(sender, messageKey, Map.of("%player%", playerName));
             refreshOnlineState(playerName);
         });
@@ -942,6 +992,28 @@ final class AuthService {
         return null;
     }
 
+    private void cleanupStaleDuplicateConnection(ProxiedPlayer duplicate,
+                                                 String incomingName,
+                                                 UUID incomingUniqueId,
+                                                 UUID incomingOfflineId) {
+        if (duplicate == null || duplicate.isConnected()) {
+            return;
+        }
+
+        boolean matchingName = duplicate.getName().equalsIgnoreCase(incomingName);
+        boolean matchingUniqueId = incomingUniqueId != null && incomingUniqueId.equals(duplicate.getUniqueId());
+        UUID duplicateOfflineId = staleConnectionAccessor.readOfflineId(duplicate.getPendingConnection());
+        boolean matchingOfflineId = incomingOfflineId != null && incomingOfflineId.equals(duplicateOfflineId);
+        if (!matchingName && !matchingUniqueId && !matchingOfflineId) {
+            return;
+        }
+
+        handleDisconnect(duplicate);
+        if (staleConnectionAccessor.remove(plugin.getProxy(), duplicate)) {
+            plugin.getLogger().info("Cleared stale proxy connection for " + duplicate.getName() + " to allow a reconnect.");
+        }
+    }
+
     private String extractIp(SocketAddress socketAddress) {
         if (socketAddress instanceof InetSocketAddress inetSocketAddress && inetSocketAddress.getAddress() != null) {
             return inetSocketAddress.getAddress().getHostAddress();
@@ -976,31 +1048,21 @@ final class AuthService {
         }
 
         int maxTries = config.authorization().maximumLoginTriesBeforeDisconnection();
-        String usernameLower = account.getUsernameLower();
-        if (isLoginLocked(usernameLower, maxTries)) {
-            String waitTime = formatDuration(remainingLockSeconds(usernameLower));
-            messages.send(player, "errors.login_locked", Map.of("%time%", waitTime));
-            player.disconnect(messages.components(messages.render("errors.login_locked", Map.of("%time%", waitTime))));
-            return;
-        }
-
         if (!passwordService.matches(password, account)) {
             if (maxTries <= 0) {
-                session.incrementFailedLoginAttempts();
                 messages.send(player, "errors.password_wrong", Map.of("%tries%", "∞"));
                 return;
             }
 
-            int attempts = recordFailedLoginAttempt(usernameLower);
+            int attempts = session.incrementFailedLoginAttempts();
             int remaining = Math.max(0, maxTries - attempts);
             if (attempts >= maxTries) {
-                String waitTime = formatDuration(remainingLockSeconds(usernameLower));
-                messages.send(player, "errors.login_locked", Map.of("%time%", waitTime));
-                player.disconnect(messages.components(messages.render("errors.login_locked", Map.of("%time%", waitTime))));
+                Map<String, String> placeholders = Map.of("%time%", "until you reconnect");
+                messages.send(player, "errors.login_locked", placeholders);
+                player.disconnect(messages.components(messages.render("errors.login_locked", placeholders)));
                 return;
             }
 
-            session.incrementFailedLoginAttempts();
             messages.send(player, "errors.password_wrong", Map.of("%tries%", String.valueOf(remaining)));
             return;
         }
@@ -1044,7 +1106,6 @@ final class AuthService {
             account.setSessionExpiresAt(0L);
             account.setUpdatedAt(System.currentTimeMillis());
             database.saveAccount(account);
-            clearFailedLoginWindow(account.getUsernameLower());
 
             session.cancelTasks();
             session.setAccount(account);
@@ -1086,7 +1147,6 @@ final class AuthService {
 
         plugin.getDatabaseExecutor().execute(() -> {
             database.saveAccount(account);
-            clearFailedLoginWindow(account.getUsernameLower());
             session.setAccount(account);
 
             if (wasPremium) {
@@ -1127,52 +1187,6 @@ final class AuthService {
             messages.send(player, "errors.account_mode_change_requires_auth");
         }
         return false;
-    }
-
-    private int recordFailedLoginAttempt(String usernameLower) {
-        FailedLoginWindow window = failedLoginWindows.compute(usernameLower, (key, current) -> {
-            long now = System.currentTimeMillis();
-            long expiresAt = now + failedLoginWindowMillis();
-            if (current == null || current.expiresAt() <= now) {
-                return new FailedLoginWindow(1, expiresAt);
-            }
-            return new FailedLoginWindow(current.attempts() + 1, expiresAt);
-        });
-        return window == null ? 0 : window.attempts();
-    }
-
-    private boolean isLoginLocked(String usernameLower, int maxTries) {
-        if (maxTries <= 0) {
-            return false;
-        }
-
-        FailedLoginWindow window = failedLoginWindows.get(usernameLower);
-        if (window == null) {
-            return false;
-        }
-
-        long now = System.currentTimeMillis();
-        if (window.expiresAt() <= now) {
-            failedLoginWindows.remove(usernameLower, window);
-            return false;
-        }
-        return window.attempts() >= maxTries;
-    }
-
-    private long remainingLockSeconds(String usernameLower) {
-        FailedLoginWindow window = failedLoginWindows.get(usernameLower);
-        if (window == null) {
-            return 0L;
-        }
-        return Math.max(1L, TimeUnit.MILLISECONDS.toSeconds(Math.max(0L, window.expiresAt() - System.currentTimeMillis())));
-    }
-
-    private void clearFailedLoginWindow(String usernameLower) {
-        failedLoginWindows.remove(usernameLower);
-    }
-
-    private long failedLoginWindowMillis() {
-        return TimeUnit.SECONDS.toMillis(Math.max(30, config.authorization().maximumAuthorisationTimeSeconds()));
     }
 
     private UUID resolveProxyUniqueId(AccountRecord account) {
@@ -1257,9 +1271,6 @@ final class AuthService {
             }
         }
         return false;
-    }
-
-    private record FailedLoginWindow(int attempts, long expiresAt) {
     }
 
     private final class FloodgateDetector {
@@ -1407,6 +1418,233 @@ final class AuthService {
         }
 
         private void logWarningOnce(String message, ReflectiveOperationException exception) {
+            if (!warningLogged) {
+                warningLogged = true;
+                plugin.getLogger().warning(message + ": " + exception.getMessage());
+            }
+        }
+    }
+
+    private final class StaleConnectionAccessor {
+        private volatile boolean proxyInitialized;
+        private volatile boolean pendingInitialized;
+        private volatile Method removeConnectionMethod;
+        private volatile Method getPlayerByOfflineUuidMethod;
+        private volatile Method getOfflineIdMethod;
+        private volatile Field connectionsField;
+        private volatile Field connectionsByUUIDField;
+        private volatile Field connectionsByOfflineUUIDField;
+        private volatile Field connectionLockField;
+        private volatile boolean warningLogged;
+
+        UUID readOfflineId(PendingConnection connection) {
+            if (connection == null) {
+                return null;
+            }
+
+            ensurePendingInitialized(connection.getClass());
+            if (getOfflineIdMethod == null) {
+                return null;
+            }
+
+            try {
+                Object value = getOfflineIdMethod.invoke(connection);
+                return value instanceof UUID uuid ? uuid : null;
+            } catch (ReflectiveOperationException exception) {
+                logWarningOnce("Unable to read pending offline UUID", exception);
+                return null;
+            }
+        }
+
+        ProxiedPlayer findByOfflineId(Object proxy, UUID offlineId) {
+            if (proxy == null || offlineId == null) {
+                return null;
+            }
+
+            ensureProxyInitialized(proxy.getClass());
+            if (getPlayerByOfflineUuidMethod == null) {
+                return null;
+            }
+
+            try {
+                Object value = getPlayerByOfflineUuidMethod.invoke(proxy, offlineId);
+                return value instanceof ProxiedPlayer player ? player : null;
+            } catch (ReflectiveOperationException exception) {
+                logWarningOnce("Unable to look up proxy connection by offline UUID", exception);
+                return null;
+            }
+        }
+
+        boolean remove(Object proxy, ProxiedPlayer player) {
+            if (proxy == null || player == null) {
+                return false;
+            }
+
+            ensureProxyInitialized(proxy.getClass());
+
+            if (removeConnectionMethod != null) {
+                try {
+                    removeConnectionMethod.invoke(proxy, player);
+                } catch (ReflectiveOperationException | IllegalArgumentException exception) {
+                    logWarningOnce("Unable to remove stale proxy connection through proxy API", exception);
+                }
+            }
+
+            if (!isStillRegistered(proxy, player)) {
+                return true;
+            }
+
+            return removeDirectly(proxy, player);
+        }
+
+        private boolean isStillRegistered(Object proxy, ProxiedPlayer player) {
+            if (plugin.getProxy().getPlayer(player.getName()) == player) {
+                return true;
+            }
+            if (plugin.getProxy().getPlayer(player.getUniqueId()) == player) {
+                return true;
+            }
+
+            UUID offlineId = readOfflineId(player.getPendingConnection());
+            return findByOfflineId(proxy, offlineId) == player;
+        }
+
+        @SuppressWarnings("unchecked")
+        private boolean removeDirectly(Object proxy, ProxiedPlayer player) {
+            Lock writeLock = lockConnections(proxy);
+            try {
+                boolean removed = false;
+                removed |= removeFromMap((Map<Object, Object>) readField(connectionsField, proxy), player.getName(), player);
+                removed |= removeFromMap((Map<Object, Object>) readField(connectionsByUUIDField, proxy), player.getUniqueId(), player);
+                removed |= removeFromMap((Map<Object, Object>) readField(connectionsByOfflineUUIDField, proxy),
+                        readOfflineId(player.getPendingConnection()), player);
+                return removed && !isStillRegistered(proxy, player);
+            } catch (IllegalAccessException exception) {
+                logWarningOnce("Unable to remove stale proxy connection directly", exception);
+                return false;
+            } finally {
+                if (writeLock != null) {
+                    writeLock.unlock();
+                }
+            }
+        }
+
+        private Lock lockConnections(Object proxy) {
+            if (connectionLockField == null) {
+                return null;
+            }
+
+            try {
+                Object lock = connectionLockField.get(proxy);
+                if (lock instanceof ReadWriteLock readWriteLock) {
+                    Lock writeLock = readWriteLock.writeLock();
+                    writeLock.lock();
+                    return writeLock;
+                }
+            } catch (IllegalAccessException exception) {
+                logWarningOnce("Unable to lock proxy connection state", exception);
+            }
+            return null;
+        }
+
+        private Object readField(Field field, Object target) throws IllegalAccessException {
+            if (field == null || target == null) {
+                return null;
+            }
+            return field.get(target);
+        }
+
+        private boolean removeFromMap(Map<Object, Object> map, Object key, ProxiedPlayer player) {
+            if (map == null || player == null) {
+                return false;
+            }
+
+            boolean removed = false;
+            if (key != null && map.get(key) == player) {
+                map.remove(key);
+                removed = true;
+            }
+
+            if (removed) {
+                return true;
+            }
+
+            var iterator = map.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Object, Object> entry = iterator.next();
+                if (entry.getValue() == player) {
+                    iterator.remove();
+                    removed = true;
+                }
+            }
+            return removed;
+        }
+
+        private synchronized void ensureProxyInitialized(Class<?> proxyClass) {
+            if (proxyInitialized) {
+                return;
+            }
+            proxyInitialized = true;
+
+            removeConnectionMethod = findMethodByName(proxyClass, "removeConnection", 1);
+            getPlayerByOfflineUuidMethod = findMethod(proxyClass, "getPlayerByOfflineUUID", UUID.class);
+            connectionsField = findField(proxyClass, "connections");
+            connectionsByUUIDField = findField(proxyClass, "connectionsByUUID");
+            connectionsByOfflineUUIDField = findField(proxyClass, "connectionsByOfflineUUID");
+            connectionLockField = findField(proxyClass, "connectionLock");
+        }
+
+        private synchronized void ensurePendingInitialized(Class<?> pendingConnectionClass) {
+            if (pendingInitialized) {
+                return;
+            }
+            pendingInitialized = true;
+            getOfflineIdMethod = findMethod(pendingConnectionClass, "getOfflineId");
+        }
+
+        private Field findField(Class<?> type, String name) {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    Field field = current.getDeclaredField(name);
+                    field.setAccessible(true);
+                    return field;
+                } catch (NoSuchFieldException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        private Method findMethod(Class<?> type, String name, Class<?>... parameterTypes) {
+            Class<?> current = type;
+            while (current != null) {
+                try {
+                    Method method = current.getDeclaredMethod(name, parameterTypes);
+                    method.setAccessible(true);
+                    return method;
+                } catch (NoSuchMethodException ignored) {
+                    current = current.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        private Method findMethodByName(Class<?> type, String name, int parameterCount) {
+            Class<?> current = type;
+            while (current != null) {
+                for (Method method : current.getDeclaredMethods()) {
+                    if (method.getName().equals(name) && method.getParameterCount() == parameterCount) {
+                        method.setAccessible(true);
+                        return method;
+                    }
+                }
+                current = current.getSuperclass();
+            }
+            return null;
+        }
+
+        private void logWarningOnce(String message, Exception exception) {
             if (!warningLogged) {
                 warningLogged = true;
                 plugin.getLogger().warning(message + ": " + exception.getMessage());

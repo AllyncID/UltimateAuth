@@ -116,7 +116,11 @@ public final class UltimateAuthPlugin extends Plugin {
                     if (player == null) {
                         return;
                     }
-                    if (args.length != 0) {
+                    if (args.length == 0) {
+                        messages.send(sender, "auth.premium_confirm");
+                        return;
+                    }
+                    if (args.length != 1 || !"confirm".equalsIgnoreCase(args[0])) {
                         messages.send(sender, "usage.premium");
                         return;
                     }
