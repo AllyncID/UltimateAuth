@@ -11,6 +11,7 @@
 
     <modules>
         <module>ultimateauth-proxy</module>
+        <module>ultimateauth-proxy-velocity</module>
         <module>ultimateauth-backend</module>
     </modules>
 
@@ -18,11 +19,13 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <bungeecord.api.version>1.21-R0.4</bungeecord.api.version>
+        <velocity.api.version>3.4.0-SNAPSHOT</velocity.api.version>
         <paper.api.version>1.21.4-R0.1-SNAPSHOT</paper.api.version>
         <hikari.version>6.3.3</hikari.version>
         <mysql.version>9.6.0</mysql.version>
         <jbcrypt.version>0.4</jbcrypt.version>
         <sqlite.version>3.51.2.0</sqlite.version>
+        <snakeyaml.version>2.4</snakeyaml.version>
     </properties>
 
     <repositories>

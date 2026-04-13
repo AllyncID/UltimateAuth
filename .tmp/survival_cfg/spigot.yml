@@ -1,0 +1,194 @@
+# This is the Spigot configuration file for Paper.
+# As you can see, there's tons to configure. Some options may impact gameplay, so use
+# with caution, and make sure you know what each option does before configuring.
+#
+# If you need help with the configuration or have any questions related to Paper,
+# join us in our Discord or check the docs page.
+#
+# File Reference: https://docs.papermc.io/paper/reference/spigot-configuration/
+# Docs: https://docs.papermc.io/
+# Discord: https://discord.gg/papermc
+# Website: https://papermc.io/
+
+settings:
+  debug: false
+  bungeecord: false
+  sample-count: 8
+  save-user-cache-on-stop-only: true
+  log-villager-deaths: false
+  log-named-deaths: false
+  timeout-time: 180
+  restart-on-crash: true
+  restart-script: ./start.sh
+  moved-wrongly-threshold: 1.0625
+  moved-too-quickly-multiplier: 9.9999999999E10
+  user-cache-size: 9999999
+  netty-threads: 6
+  attribute:
+    maxHealth:
+      max: 9999999.0
+    maxAbsorption:
+      max: 2048.0
+    movementSpeed:
+      max: 2048.0
+    attackDamage:
+      max: 2048.0
+  player-shuffle: 0
+messages:
+  whitelist: §cServer is under maintenance join our discord
+  unknown-command: §7Unknown command, use §f/help §7for further help.
+  server-full: §cThe server has reached it's player limit!
+  outdated-client: Outdated client! Please use {0}
+  outdated-server: Outdated server! I'm still on {0}
+  restart: §cServer is restarting. Please rejoin!
+advancements:
+  disabled:
+  - minecraft:story/disabled
+  # WAJIB: Mematikan advancement akan mengurangi beban I/O disk secara signifikan.
+  # Jika sebelumnya false, hapus folder /world/advancements setelah diubah ke true.
+  disable-saving: true
+commands:
+  tab-complete: 0
+  send-namespaced: false
+  silent-commandblock-console: false
+  spam-exclusions:
+  - skill
+  - /fill
+  - setblock
+  log: true
+  replace-commands:
+  - setblock
+  - summon
+  - testforblock
+  - tellraw
+  enable-spam-exclusions: true
+world-settings:
+  default:
+    unload-frozen-chunks: false
+    below-zero-generation-in-existing-chunks: true
+    end-portal-sound-radius: 0
+    wither-spawn-sound-radius: 0
+    dragon-death-sound-radius: 0
+    hanging-tick-frequency: 100
+    merge-radius:
+      exp: 8.0 # Nilai tinggi, bagus untuk menggabungkan EXP orb.
+      item: 6.0 # Nilai tinggi, bagus untuk menggabungkan item.
+    hunger:
+      jump-walk-exhaustion: 0.05
+      jump-sprint-exhaustion: 0.2
+      combat-exhaustion: 0.1
+      regen-exhaustion: 6.0
+      swim-multiplier: 0.01
+      sprint-multiplier: 0.1
+      other-multiplier: 0.0
+    ticks-per:
+      hopper-transfer: 30 # Membuat hopper sangat lambat, bagus untuk CPU.
+      hopper-check: 30
+    hopper-amount: 1
+    hopper-can-load-chunks: false
+    # WAJIB: Menurunkan tracking range secara drastis untuk mengurangi beban jaringan (network traffic).
+    entity-tracking-range:
+      players: 32
+      animals: 20
+      monsters: 20
+      misc: 16
+      display: 64
+      other: 24
+    growth:
+      cactus-modifier: 100
+      cane-modifier: 100
+      melon-modifier: 100
+      mushroom-modifier: 100
+      pumpkin-modifier: 100
+      sapling-modifier: 100
+      beetroot-modifier: 100
+      carrot-modifier: 100
+      potato-modifier: 100
+      torchflower-modifier: 100
+      wheat-modifier: 100
+      netherwart-modifier: 100
+      vine-modifier: 100
+      cocoa-modifier: 100
+      bamboo-modifier: 100
+      sweetberry-modifier: 100
+      kelp-modifier: 100
+      twistingvines-modifier: 100
+      weepingvines-modifier: 100
+      cavevines-modifier: 100
+      glowberry-modifier: 100
+      pitcherplant-modifier: 100
+    thunder-chance: 100000
+    # Mempercepat item hilang dari tanah untuk mengurangi entitas.
+    item-despawn-rate: 3000 # 2.5 menit
+    arrow-despawn-rate: 150
+    trident-despawn-rate: 400
+    mob-spawn-range: 3 # Sedikit lebih luas dari default agar spawn tidak terlalu menumpuk.
+    # Nilai di bawah ini sudah SANGAT BAGUS dan agresif. Ini adalah optimasi CPU terpenting.
+    entity-activation-range:
+      animals: 5
+      monsters: 5
+      raiders: 12
+      misc: 8
+      water: 8
+      villagers: 8
+      flying-monsters: 12
+      wake-up-inactive:
+        animals-max-per-tick: 2
+        animals-every: 1600
+        animals-for: 80
+        monsters-max-per-tick: 4
+        monsters-every: 600
+        monsters-for: 80
+        villagers-max-per-tick: 1
+        villagers-every: 800
+        villagers-for: 100
+        flying-monsters-max-per-tick: 2
+        flying-monsters-every: 400
+        flying-monsters-for: 100
+      villagers-work-immunity-after: 200
+      villagers-work-immunity-for: 40
+      villagers-active-for-panic: true
+      tick-inactive-villagers: false # Sangat bagus, jangan tick villager yang tidur.
+      ignore-spectators: false
+    nerf-spawner-mobs: false
+    seed-village: 10387312
+    seed-desert: 14357617
+    seed-igloo: 14357618
+    seed-jungle: 14357619
+    seed-swamp: 14357620
+    seed-monument: 10387313
+    seed-shipwreck: 165745295
+    seed-ocean: 14357621
+    seed-outpost: 165745296
+    seed-endcity: 10387313
+    seed-slime: 987234911
+    seed-nether: 30084232
+    seed-mansion: 10387319
+    seed-fossil: 14357921
+    seed-portal: 34222645
+    seed-ancientcity: 20083232
+    seed-trailruins: 83469867
+    seed-trialchambers: 94251327
+    seed-buriedtreasure: 10387320
+    seed-mineshaft: default
+    seed-stronghold: default
+    max-tick-time:
+      tile: 1000
+      entity: 1000
+    max-tnt-per-tick: 50
+    # Penting: nilai ini harus diatur di server.properties, bukan di sini.
+    view-distance: default
+    simulation-distance: default
+    zombie-aggressive-towards-villager: true
+    enable-zombie-pigmen-portal-spawns: true
+    verbose: false
+  faweregentempworld:
+    verbose: false
+  worldeditregentempworld:
+    verbose: false
+players:
+  disable-saving: false
+config-version: 12
+stats:
+  disable-saving: false
+  forced-stats: {}

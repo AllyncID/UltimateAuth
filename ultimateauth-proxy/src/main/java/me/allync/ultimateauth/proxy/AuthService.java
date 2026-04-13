@@ -213,6 +213,7 @@ final class AuthService {
             preparedLogin = new PreparedLogin(account, status, null, null);
         }
 
+        applyPlayerIdentity(player, preparedLogin.account());
         AuthSession session = sessions.computeIfAbsent(player.getUniqueId(), uniqueId -> new AuthSession(uniqueId, player.getName()));
         session.cancelTasks();
         session.setLastKnownName(player.getName());
@@ -611,7 +612,7 @@ final class AuthService {
 
         if (account == null) {
             if (bedrockPlayer) {
-                account = database.newAccount(playerName, playerUuid);
+                account = database.newAccount(playerName, resolvePlayerUuid(null, playerUuid, true));
                 account.setAccountType(AccountType.BEDROCK);
                 account.setLastIp(ipAddress);
                 account.setLastLoginAt(now);
@@ -648,9 +649,7 @@ final class AuthService {
         }
 
         account.setLastName(playerName);
-        if (account.getPlayerUuid() == null) {
-            account.setPlayerUuid(playerUuid);
-        }
+        syncPlayerUuid(account, playerUuid, bedrockPlayer);
 
         if (bedrockPlayer && account.getAccountType() != AccountType.BEDROCK) {
             account.setAccountType(AccountType.BEDROCK);
@@ -707,7 +706,7 @@ final class AuthService {
 
         if (account == null) {
             if (bedrockPlayer) {
-                account = database.newAccount(playerName, playerUuid);
+                account = database.newAccount(playerName, resolvePlayerUuid(null, playerUuid, true));
                 account.setAccountType(AccountType.BEDROCK);
                 account.setLastIp(ipAddress);
                 account.setLastLoginAt(now);
@@ -738,9 +737,7 @@ final class AuthService {
         }
 
         account.setLastName(playerName);
-        if (account.getPlayerUuid() == null) {
-            account.setPlayerUuid(playerUuid);
-        }
+        syncPlayerUuid(account, playerUuid, bedrockPlayer);
 
         if (bedrockPlayer && account.getAccountType() != AccountType.BEDROCK) {
             account.setAccountType(AccountType.BEDROCK);
@@ -1189,7 +1186,58 @@ final class AuthService {
         return false;
     }
 
+    private UUID resolvePlayerUuid(AccountRecord account, UUID liveUniqueId, boolean detectedBedrock) {
+        if (shouldUseBedrockUuid(account, detectedBedrock)) {
+            UUID legacyBedrockUuid = resolveLegacyBedrockUniqueId(account == null ? null : account.getPlayerUuid(), liveUniqueId);
+            if (legacyBedrockUuid != null) {
+                return legacyBedrockUuid;
+            }
+        }
+        if (account != null && account.getPlayerUuid() != null) {
+            return account.getPlayerUuid();
+        }
+        return liveUniqueId;
+    }
+
+    private boolean syncPlayerUuid(AccountRecord account, UUID liveUniqueId, boolean detectedBedrock) {
+        if (account == null) {
+            return false;
+        }
+        UUID resolvedPlayerUuid = resolvePlayerUuid(account, liveUniqueId, detectedBedrock);
+        if (resolvedPlayerUuid == null || resolvedPlayerUuid.equals(account.getPlayerUuid())) {
+            return false;
+        }
+        account.setPlayerUuid(resolvedPlayerUuid);
+        return true;
+    }
+
+    private boolean shouldUseBedrockUuid(AccountRecord account, boolean detectedBedrock) {
+        if (account != null && account.getAccountType() == AccountType.BEDROCK) {
+            return true;
+        }
+        return detectedBedrock && (account == null || account.getAccountType() != AccountType.PREMIUM);
+    }
+
+    private UUID resolveLegacyBedrockUniqueId(UUID storedPlayerUuid, UUID liveUniqueId) {
+        if (isLegacyBedrockUniqueId(storedPlayerUuid)) {
+            return storedPlayerUuid;
+        }
+        UUID floodgateLegacyUuid = floodgateDetector.resolveLegacyBedrockUniqueId(liveUniqueId);
+        if (floodgateLegacyUuid != null) {
+            return floodgateLegacyUuid;
+        }
+        return storedPlayerUuid;
+    }
+
+    private boolean isLegacyBedrockUniqueId(UUID uniqueId) {
+        return uniqueId != null && uniqueId.getMostSignificantBits() == 0L;
+    }
+
     private UUID resolveProxyUniqueId(AccountRecord account) {
+        return resolveProxyUniqueId(account, null);
+    }
+
+    private UUID resolveProxyUniqueId(AccountRecord account, UUID liveUniqueId) {
         if (account.getAccountType() == AccountType.PREMIUM) {
             if (config.premium().existingPremiumUuidMode() == PremiumUuidMode.REAL && account.getPremiumUuid() != null) {
                 return account.getPremiumUuid();
@@ -1199,19 +1247,23 @@ final class AuthService {
             }
             return account.getPremiumUuid();
         }
-        return account.getPlayerUuid();
+        return resolvePlayerUuid(account, liveUniqueId, account.getAccountType() == AccountType.BEDROCK);
     }
 
     UUID resolveBackendUniqueId(ProxiedPlayer player) {
         AuthSession session = sessions.get(player.getUniqueId());
         if (session != null && session.getAccount() != null) {
-            return resolveBackendUniqueId(session.getAccount());
+            return resolveBackendUniqueId(session.getAccount(), player.getUniqueId());
         }
         return connectionIdentityAccessor.readRewriteId(player);
     }
 
     private UUID resolveBackendUniqueId(AccountRecord account) {
-        return resolveProxyUniqueId(account);
+        return resolveBackendUniqueId(account, null);
+    }
+
+    private UUID resolveBackendUniqueId(AccountRecord account, UUID liveUniqueId) {
+        return resolveProxyUniqueId(account, liveUniqueId);
     }
 
     private void applyConnectionIdentity(PendingConnection connection, AccountRecord account) {
@@ -1219,9 +1271,21 @@ final class AuthService {
             return;
         }
 
-        UUID proxyUniqueId = resolveProxyUniqueId(account);
-        UUID backendUniqueId = resolveBackendUniqueId(account);
+        UUID liveUniqueId = connection.getUniqueId();
+        UUID proxyUniqueId = resolveProxyUniqueId(account, liveUniqueId);
+        UUID backendUniqueId = resolveBackendUniqueId(account, liveUniqueId);
         connectionIdentityAccessor.apply(connection, proxyUniqueId, backendUniqueId);
+    }
+
+    private void applyPlayerIdentity(ProxiedPlayer player, AccountRecord account) {
+        if (player == null || account == null) {
+            return;
+        }
+
+        UUID liveUniqueId = player.getUniqueId();
+        UUID proxyUniqueId = resolveProxyUniqueId(account, liveUniqueId);
+        UUID backendUniqueId = resolveBackendUniqueId(account, liveUniqueId);
+        connectionIdentityAccessor.apply(player, proxyUniqueId, backendUniqueId);
     }
 
     private String formatDuration(long totalSeconds) {
@@ -1277,7 +1341,10 @@ final class AuthService {
         private volatile boolean initialized;
         private volatile Method getInstanceMethod;
         private volatile Method isFloodgatePlayerMethod;
+        private volatile Method getPlayerMethod;
         private volatile boolean warningLogged;
+        private volatile boolean identityWarningLogged;
+        private volatile boolean xuidWarningLogged;
 
         boolean isFloodgatePlayer(UUID playerUuid) {
             if (playerUuid == null) {
@@ -1302,6 +1369,55 @@ final class AuthService {
             }
         }
 
+        UUID resolveLegacyBedrockUniqueId(UUID playerUuid) {
+            String xuid = resolveXuid(playerUuid);
+            if (xuid == null) {
+                return null;
+            }
+
+            try {
+                return new UUID(0L, Long.parseUnsignedLong(xuid));
+            } catch (NumberFormatException exception) {
+                if (!xuidWarningLogged) {
+                    xuidWarningLogged = true;
+                    plugin.getLogger().warning("Floodgate XUID '" + xuid + "' is not numeric, Bedrock legacy UUID rewrite is disabled.");
+                }
+                return null;
+            }
+        }
+
+        private String resolveXuid(UUID playerUuid) {
+            if (playerUuid == null) {
+                return null;
+            }
+
+            ensureInitialized();
+            if (getInstanceMethod == null || getPlayerMethod == null) {
+                return null;
+            }
+
+            try {
+                Object api = getInstanceMethod.invoke(null);
+                Object floodgatePlayer = getPlayerMethod.invoke(api, playerUuid);
+                if (floodgatePlayer == null) {
+                    return null;
+                }
+
+                Method getXuidMethod = floodgatePlayer.getClass().getMethod("getXuid");
+                Object xuid = getXuidMethod.invoke(floodgatePlayer);
+                if (xuid instanceof String value && !value.isBlank()) {
+                    return value;
+                }
+            } catch (ReflectiveOperationException exception) {
+                if (!identityWarningLogged) {
+                    identityWarningLogged = true;
+                    plugin.getLogger().warning("Floodgate XUID lookup failed, Bedrock UUIDs will stay on the stored value: "
+                            + exception.getMessage());
+                }
+            }
+            return null;
+        }
+
         private synchronized void ensureInitialized() {
             if (initialized) {
                 return;
@@ -1312,9 +1428,11 @@ final class AuthService {
                 Class<?> apiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi");
                 getInstanceMethod = apiClass.getMethod("getInstance");
                 isFloodgatePlayerMethod = apiClass.getMethod("isFloodgatePlayer", UUID.class);
+                getPlayerMethod = apiClass.getMethod("getPlayer", UUID.class);
             } catch (ClassNotFoundException | NoSuchMethodException ignored) {
                 getInstanceMethod = null;
                 isFloodgatePlayerMethod = null;
+                getPlayerMethod = null;
             }
         }
     }
@@ -1324,6 +1442,10 @@ final class AuthService {
         private volatile boolean playerInitialized;
         private volatile Field pendingUniqueIdField;
         private volatile Field pendingRewriteIdField;
+        private volatile Field pendingOfflineIdField;
+        private volatile Field playerUniqueIdField;
+        private volatile Field playerRewriteIdField;
+        private volatile Field playerOfflineIdField;
         private volatile Method playerRewriteIdMethod;
         private volatile boolean warningLogged;
 
@@ -1333,6 +1455,7 @@ final class AuthService {
             }
 
             ensurePendingInitialized(connection.getClass());
+            UUID effectiveOfflineId = rewriteId != null ? rewriteId : uniqueId;
             if (!connection.isOnlineMode() && uniqueId != null) {
                 try {
                     connection.setUniqueId(uniqueId);
@@ -1348,8 +1471,35 @@ final class AuthService {
                 if (pendingRewriteIdField != null && rewriteId != null) {
                     pendingRewriteIdField.set(connection, rewriteId);
                 }
+                if (pendingOfflineIdField != null && effectiveOfflineId != null) {
+                    pendingOfflineIdField.set(connection, effectiveOfflineId);
+                }
             } catch (IllegalAccessException exception) {
                 logWarningOnce("Unable to apply connection UUID identity", exception);
+            }
+        }
+
+        void apply(ProxiedPlayer player, UUID uniqueId, UUID rewriteId) {
+            if (player == null || (uniqueId == null && rewriteId == null)) {
+                return;
+            }
+
+            apply(player.getPendingConnection(), uniqueId, rewriteId);
+            ensurePlayerInitialized(player.getClass());
+            UUID effectiveOfflineId = rewriteId != null ? rewriteId : uniqueId;
+
+            try {
+                if (playerUniqueIdField != null && uniqueId != null) {
+                    playerUniqueIdField.set(player, uniqueId);
+                }
+                if (playerRewriteIdField != null && rewriteId != null) {
+                    playerRewriteIdField.set(player, rewriteId);
+                }
+                if (playerOfflineIdField != null && effectiveOfflineId != null) {
+                    playerOfflineIdField.set(player, effectiveOfflineId);
+                }
+            } catch (IllegalAccessException exception) {
+                logWarningOnce("Unable to apply player UUID identity", exception);
             }
         }
 
@@ -1360,6 +1510,14 @@ final class AuthService {
 
             ensurePlayerInitialized(player.getClass());
             if (playerRewriteIdMethod == null) {
+                try {
+                    UUID rewrittenUniqueId = readUuidField(playerRewriteIdField, player);
+                    if (rewrittenUniqueId != null) {
+                        return rewrittenUniqueId;
+                    }
+                } catch (IllegalAccessException exception) {
+                    logWarningOnce("Unable to read backend rewrite UUID", exception);
+                }
                 return player.getUniqueId();
             }
 
@@ -1379,6 +1537,7 @@ final class AuthService {
             pendingInitialized = true;
             pendingUniqueIdField = findField(pendingConnectionClass, "uniqueId");
             pendingRewriteIdField = findField(pendingConnectionClass, "rewriteId");
+            pendingOfflineIdField = findField(pendingConnectionClass, "offlineId");
         }
 
         private synchronized void ensurePlayerInitialized(Class<?> playerClass) {
@@ -1386,7 +1545,18 @@ final class AuthService {
                 return;
             }
             playerInitialized = true;
+            playerUniqueIdField = findField(playerClass, "uniqueId");
+            playerRewriteIdField = findField(playerClass, "rewriteId");
+            playerOfflineIdField = findField(playerClass, "offlineId");
             playerRewriteIdMethod = findMethod(playerClass, "getRewriteId");
+        }
+
+        private UUID readUuidField(Field field, Object target) throws IllegalAccessException {
+            if (field == null || target == null) {
+                return null;
+            }
+            Object value = field.get(target);
+            return value instanceof UUID uuid ? uuid : null;
         }
 
         private Field findField(Class<?> type, String name) {

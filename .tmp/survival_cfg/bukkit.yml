@@ -1,0 +1,50 @@
+# This is the Bukkit configuration file in Paper.
+# As you can see, there's actually not that much to configure without any plugins.
+#
+# If you need help with the configuration or have any questions related to Paper,
+# join us in our Discord or check the docs page.
+#
+# File Reference: https://docs.papermc.io/paper/reference/bukkit-configuration/
+# Docs: https://docs.papermc.io/
+# Discord: https://discord.gg/papermc
+# Website: https://papermc.io/
+
+settings:
+  allow-end: true
+  warn-on-overload: false
+  permissions-file: permissions.yml
+  update-folder: update
+  plugin-profiling: false
+  # Mengatur throttle ke 3000ms (3 detik) adalah jalan tengah yang baik.
+  # Mencegah join spam/bot sederhana tanpa terlalu menghambat pemain asli.
+  connection-throttle: 3000
+  query-plugins: false
+  deprecated-verbose: default
+  shutdown-message: §cServer has been closed. Please rejoin!
+  minimum-api: none
+  use-map-color-cache: true
+# Batas spawn global. Dibuat cukup tinggi agar tidak membatasi sistem spawn per-pemain di paper.yml,
+# namun tetap berfungsi sebagai batas atas untuk seluruh server.
+spawn-limits:
+  monsters: 70 # (paper monster limit * 20 player contoh)
+  animals: 1
+  water-animals: 1
+  water-ambient: 0
+  water-underground-creature: 0
+  axolotls: 1
+  ambient: 0
+chunk-gc:
+  # Mengembalikan ke default Paper. Sistem chunk di Paper sudah cukup efisien.
+  period-in-ticks: 300
+# Mengembalikan ke nilai default agar Paper bisa mengontrol timing spawn.
+# Pengaturan ticks-per-spawn di paper.yml sudah cukup untuk melambatkan spawn.
+ticks-per:
+  animal-spawns: 1000
+  monster-spawns: 1 # WAJIB: Kembalikan ke 1.
+  water-spawns: 1
+  water-ambient-spawns: 1
+  water-underground-creature-spawns: 1
+  axolotl-spawns: 1
+  ambient-spawns: 1
+  autosave: 6000 # Default paper. Biarkan paper yang mengontrol autosave interval.
+aliases: now-in-commands.yml

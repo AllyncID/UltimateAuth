@@ -34,3 +34,6 @@ Thumbs.db
 *.ear
 *.zip
 *.tar.gz
+
+# Local modules
+ultimateauth-proxy-velocity/
