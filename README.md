@@ -1,6 +1,6 @@
 # UltimateAuth
 
-UltimateAuth is a powerful and flexible authentication solution specifically designed for Minecraft servers, supporting both proxy (BungeeCord/Velocity) and game servers (Spigot/Paper). Its purpose is to provide a secure, efficient, and easily manageable registration and login system, protecting your server from unauthorized access and enhancing the player experience.
+UltimateAuth is a powerful and flexible authentication solution specifically designed for Minecraft servers, supporting both proxy (BungeeCord/Velocity) and game servers (Paper/Folia). Its purpose is to provide a secure, efficient, and easily manageable registration and login system, protecting your server from unauthorized access and enhancing the player experience.
 
 With its separate two-component architecture, UltimateAuth ensures scalability, improved security, and a clear separation of responsibilities between the proxy and game layers.
 
@@ -31,7 +31,7 @@ UltimateAuth is designed with a modular architecture consisting of two main comp
     *   Manages player authentication sessions.
 
 2.  **`ultimateauth-backend` (Backend Module)**:
-    *   Runs on each of your Spigot/Paper game servers.
+    *   Runs on each of your Paper/Folia game servers.
     *   Receives instructions from the proxy module.
     *   Implements security actions such as freezing unauthenticated players.
     *   Displays local authentication messages and titles to players.
@@ -57,7 +57,7 @@ To run UltimateAuth, you will need:
 *   **Java Development Kit (JDK)**: Version 8 or newer.
 *   **Apache Maven**: Version 3.x for building the project from source.
 *   **Proxy Server**: BungeeCord or Velocity (latest versions recommended).
-*   **Game Server**: Spigot or Paper (latest versions recommended).
+*   **Game Server**: Paper or Folia (latest versions recommended).
 *   **Database**: MySQL (recommended) or SQLite.
 
 ## Installation Guide
@@ -92,8 +92,8 @@ After the build process is complete, you need to place the appropriate JAR files
 
 *   **For Proxy Server (BungeeCord/Velocity)**:
     *   Copy `ultimateauth-proxy-X.X.X-SNAPSHOT-shaded.jar` to the `plugins/` folder on your proxy server.
-*   **For Game Server (Spigot/Paper)**:
-    *   Copy `ultimateauth-backend-X.X.X-SNAPSHOT.jar` to the `plugins/` folder on each of your Spigot/Paper game servers that you wish to protect.
+*   **For Game Server (Paper/Folia)**:
+    *   Copy `ultimateauth-backend-X.X.X-SNAPSHOT.jar` to the `plugins/` folder on each of your Paper/Folia game servers that you wish to protect.
 
 ### 4. Initial Configuration
 

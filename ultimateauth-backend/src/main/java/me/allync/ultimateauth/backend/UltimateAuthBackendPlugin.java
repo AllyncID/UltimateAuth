@@ -9,9 +9,11 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.bukkit.potion.PotionEffect;
@@ -69,11 +71,7 @@ public final class UltimateAuthBackendPlugin extends JavaPlugin implements Liste
 
             Player target = getServer().getPlayer(uniqueId);
             if (target != null) {
-                if (frozen) {
-                    applyFrozenState(target);
-                } else {
-                    clearFrozenState(target);
-                }
+                runOnPlayerScheduler(target, () -> synchronizeFrozenState(target));
             }
         } catch (IOException | IllegalArgumentException exception) {
             getLogger().warning("Unable to read UltimateAuth bridge message: " + exception.getMessage());
@@ -82,10 +80,18 @@ public final class UltimateAuthBackendPlugin extends JavaPlugin implements Liste
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        if (isFrozen(event.getPlayer())) {
-            applyFrozenState(event.getPlayer());
-        } else {
-            clearFrozenState(event.getPlayer());
+        synchronizeFrozenState(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        runOnPlayerScheduler(event.getPlayer(), () -> synchronizeFrozenState(event.getPlayer()));
+    }
+
+    @EventHandler
+    public void onGameModeChange(PlayerGameModeChangeEvent event) {
+        if (frozenStates.containsKey(event.getPlayer().getUniqueId())) {
+            runOnPlayerScheduler(event.getPlayer(), () -> synchronizeFrozenState(event.getPlayer()));
         }
     }
 
@@ -154,6 +160,18 @@ public final class UltimateAuthBackendPlugin extends JavaPlugin implements Liste
 
     private boolean shouldSkipPlayer(Player player) {
         return skipCreative && (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR);
+    }
+
+    private void synchronizeFrozenState(Player player) {
+        if (isFrozen(player)) {
+            applyFrozenState(player);
+        } else {
+            clearFrozenState(player);
+        }
+    }
+
+    private void runOnPlayerScheduler(Player player, Runnable action) {
+        player.getScheduler().execute(this, action, null, 1L);
     }
 
     private void applyFrozenState(Player player) {

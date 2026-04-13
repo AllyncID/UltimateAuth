@@ -20,7 +20,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <bungeecord.api.version>1.21-R0.4</bungeecord.api.version>
         <velocity.api.version>3.4.0-SNAPSHOT</velocity.api.version>
-        <paper.api.version>1.21.4-R0.1-SNAPSHOT</paper.api.version>
+        <paper.api.version>1.21.11-R0.1-SNAPSHOT</paper.api.version>
         <hikari.version>6.3.3</hikari.version>
         <mysql.version>9.6.0</mysql.version>
         <jbcrypt.version>0.4</jbcrypt.version>

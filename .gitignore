@@ -28,6 +28,11 @@ buildNumber.properties
 .DS_Store
 Thumbs.db
 
+# Local temp/work directories
+.tmp/
+tmp/
+temp/
+
 # Compiled output
 *.jar
 *.war
